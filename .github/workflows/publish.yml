@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+
+name: Publish images
+
+on:
+    workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish-images:
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Determine Version
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -sSL https://crates.io/api/v1/crates/wasmtime-cli/versions \
+            | jq --raw-output '"VERSION=" + .versions[0].num' \
+            >> ${GITHUB_ENV}
+      - name: Check Registry
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if !curl -sSL \
+            -H "Authorization: Bearer QQ==" \
+            -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json' \
+            https://ghcr.io/v2/jprendes/wasmtime-distroless/wasmtime/manifests/$VERSION \
+            | jq --raw-output '.schemaVersion != null' \
+            | grep -qE '^false$'; then
+                echo "Image already exists in registry"
+                exit 1
+          fi
+      - name: Enable containerd image store
+        run: |
+          echo '{ "features": { "containerd-snapshotter": true } }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+      - name: Build Images
+        shell: bash
+        run: make wasmtime hello VERSION=$VERSION
+      - name: Tag images
+        shell: bash
+        run: |
+          docker tag ghcr.io/jprendes/wasmtime-distroless/wasmtime:{$VERSION,latest}
+          docker tag ghcr.io/jprendes/wasmtime-distroless/hello:{$VERSION,latest}
+      - name: Login to GitHub container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push Images
+        shell: bash
+        run: |
+          docker push ghcr.io/jprendes/wasmtime-distroless/wasmtime:$VERSION
+          docker push ghcr.io/jprendes/wasmtime-distroless/wasmtime:latest
+          docker push ghcr.io/jprendes/wasmtime-distroless/hello:$VERSION
+          docker push ghcr.io/jprendes/wasmtime-distroless/hello:latest

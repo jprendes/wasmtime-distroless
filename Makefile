@@ -5,7 +5,7 @@ export DOCKER_CLI_HINTS=false
 
 .PHONY: build run hello wasmtime clean
 
-build: hello
+build: wasmtime hello
 
 run: hello
 	docker run --rm -it ghcr.io/jprendes/wasmtime-distroless/hello:$(VERSION)
