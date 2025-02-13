@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1.13-labs
+ARG VERSION=latest
+
+FROM --platform=$BUILDPLATFORM rust:alpine AS build
+RUN apk add --no-cache musl-dev
+RUN cargo install wasm-tools
+COPY hello.wat /
+RUN wasm-tools parse </hello.wat >/hello.wasm
+
+FROM ghcr.io/jprendes/wasmtime-distroless/wasmtime:$VERSION
+COPY --from=build /hello.wasm /
+ENTRYPOINT ["/wasmtime", "/hello.wasm"]
